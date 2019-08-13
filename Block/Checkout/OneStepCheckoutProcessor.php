@@ -34,6 +34,8 @@ class OneStepCheckoutProcessor implements LayoutProcessorInterface
 {
     const CONFIG_ENABLE_MAGEWORX_MULTIFEES = 'mageworx_multifees/main/enable_cart';
 
+    const CONFIG_ENABLE_MAGEPLAZA_SOCIALLOGIN = 'sociallogin/general/enabled';
+
     /**
      * @var ScopeConfigInterface
      */
@@ -63,6 +65,8 @@ class OneStepCheckoutProcessor implements LayoutProcessorInterface
 
     protected $request;
 
+    protected $_moduleList;
+
     /**
      * @param ScopeConfigInterface $scopeConfig
      * @param ModuleManager $moduleManager
@@ -70,6 +74,7 @@ class OneStepCheckoutProcessor implements LayoutProcessorInterface
      * @param \Ecomteck\OneStepCheckout\Helper\Config $config
      * @param \Magento\Framework\App\Request\Http $request
      * @param ArrayManager $arrayManager
+     * @param \Magento\Framework\Module\ModuleListInterface $moduleList
      */
     public function __construct(
         ScopeConfigInterface $scopeConfig, 
@@ -77,7 +82,8 @@ class OneStepCheckoutProcessor implements LayoutProcessorInterface
         CheckoutSession $checkoutSession,
         \Ecomteck\OneStepCheckout\Helper\Config $config,
         \Magento\Framework\App\Request\Http $request,
-        ArrayManager $arrayManager
+        ArrayManager $arrayManager,
+        \Magento\Framework\Module\ModuleListInterface $moduleList
     )
     {
         $this->scopeConfig = $scopeConfig;
@@ -86,8 +92,24 @@ class OneStepCheckoutProcessor implements LayoutProcessorInterface
         $this->arrayManager = $arrayManager;
         $this->_config = $config;
         $this->request = $request;
+        $this->_moduleList      = $moduleList;
     }
 
+    /**
+     * Check the module was installed on magento 2 site or not
+     * @param string $moduleName
+     * @return boolean
+     */
+    public function checkModuleInstalled($moduleName){
+        $is_installed =  $this->_moduleList->has($moduleName);
+        if($is_installed) {
+            if(!$this->moduleManager->isOutputEnabled($moduleName)){
+                $is_installed = false;
+            }
+        }
+
+        return $is_installed;
+    }
     /**
      * Changes cart items to be above totals in the cart summary.
      *
@@ -96,7 +118,7 @@ class OneStepCheckoutProcessor implements LayoutProcessorInterface
      */
     private function modifyMageWorxMultiFees($jsLayout)
     {
-        if(!$this->moduleManager->isOutputEnabled('MageWorx_MultiFees')){
+        if(!$this->checkModuleInstalled("MageWorx_MultiFees")){
             return $jsLayout;
         }
         if ($this->scopeConfig->getValue(self::CONFIG_ENABLE_MAGEWORX_MULTIFEES, ScopeInterface::SCOPE_STORE)) {
@@ -104,6 +126,25 @@ class OneStepCheckoutProcessor implements LayoutProcessorInterface
             if($this->arrayManager->get($path, $jsLayout)){
                 $jsLayout = $this->arrayManager->set($path.'/component', $jsLayout,'Ecomteck_OneStepCheckoutCompatible/js/MageWorx/MultiFees/view/shipping-fee');
             }
+        }
+        return $jsLayout;
+    }
+
+    /**
+     * Override mageplaza social login to display social login on checkout page
+     *
+     * @param array $jsLayout
+     * @return array
+     */
+    private function modifyMageplazaSocialLogin($jsLayout)
+    {
+        if(!$this->checkModuleInstalled("Mageplaza_SocialLogin")){
+            return $jsLayout;
+        }
+        if ($this->scopeConfig->getValue(self::CONFIG_ENABLE_MAGEPLAZA_SOCIALLOGIN, ScopeInterface::SCOPE_STORE)) {
+            $path = 'components/checkout/children/steps/children/shipping-step/children/shippingAddress/children/social-login';
+            $jsLayout = $this->arrayManager->set($path.'/component', $jsLayout,'Ecomteck_OneStepCheckoutCompatible/js/Mageplaza/SocialLogin/view/social-buttons');
+            $jsLayout = $this->arrayManager->set($path.'/displayArea', $jsLayout,'social-login');
         }
         return $jsLayout;
     }
@@ -118,6 +159,8 @@ class OneStepCheckoutProcessor implements LayoutProcessorInterface
         }
 
         $jsLayout = $this->modifyMageWorxMultiFees($jsLayout);
+
+        $jsLayout = $this->modifyMageplazaSocialLogin($jsLayout);
         
         return $jsLayout;
     }
